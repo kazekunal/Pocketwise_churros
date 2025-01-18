@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 export default function SignUp() {
     const router = useRouter();
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-pink-200 to-cyan-200 flex items-center justify-center p-4">
       <div className="container mx-auto flex items-center justify-between gap-8">
         {/* Signup Form */}
         <div className="w-1/2">
