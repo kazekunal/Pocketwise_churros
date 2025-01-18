@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { db, auth } from '../../components/firebase';
+import { db, auth } from '../firebase';
 import { 
   collection, 
   doc, 
@@ -77,7 +77,7 @@ const Dashboard = () => {
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        setBudget(userData.budget || 1000);
+        setBudget(userData.budget || 0);
         setMonthlyData(userData.monthlyData || []);
         setGoals(userData.goals || []);
         
@@ -165,7 +165,7 @@ const Dashboard = () => {
         updatedMonthlyData.push({
           name: selectedMonth,
           expense: totalExpense,
-          income: 1000
+          income: 0
         });
       }
 

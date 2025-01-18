@@ -1,14 +1,119 @@
 'use client'
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword } from "firebase/auth";
+import { auth, db } from "../../components/firebase";
+import { setDoc, doc, getDoc } from "firebase/firestore";
+import { toast } from "react-toastify";
 
 export default function SignUp() {
-    const router = useRouter();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: ''
+  });
+
+  const handleInputChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.id]: e.target.value
+    });
+  };
+
+  const checkUserExists = async (email) => {
+    const usersRef = doc(db, "users", email);
+    const docSnap = await getDoc(usersRef);
+    return docSnap.exists();
+  };
+
+  const handleEmailSignUp = async (e) => {
+    e.preventDefault();
+    if (isLoading) return;
+    
+    setIsLoading(true);
+    try {
+      // Check if user already exists
+      const userExists = await checkUserExists(formData.email);
+      
+      if (userExists) {
+        toast.info("Account already exists. Redirecting to sign in...");
+        router.push('/signin');
+        return;
+      }
+
+      // Create auth account
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password
+      );
+
+      // Save to Firestore
+      await setDoc(doc(db, "users", userCredential.user.uid), {
+        email: formData.email,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        createdAt: new Date().toISOString()
+      });
+
+      toast.success("Registration successful!");
+      router.push('/survey');
+
+    } catch (error) {
+      console.error("SignUp error:", error);
+      toast.error(error.message || "Sign up failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    if (isLoading) return;
+    
+    setIsLoading(true);
+    const provider = new GoogleAuthProvider();
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Check if user exists
+      const userExists = await checkUserExists(user.email);
+      
+      if (userExists) {
+        toast.info("Account already exists. Redirecting to sign in...");
+        router.push('/signin');
+        return;
+      }
+
+      // Save to Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        email: user.email,
+        firstName: user.displayName?.split(' ')[0] || '',
+        lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+        photo: user.photoURL,
+        createdAt: new Date().toISOString()
+      });
+      
+      toast.success("Registration successful!");
+      router.push('/survey');
+
+    } catch (error) {
+      console.error("Authentication error:", error);
+      toast.error(error.message || "Sign up failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-200 to-cyan-200 flex items-center justify-center p-4">
       <div className="container mx-auto flex items-center justify-between gap-8">
@@ -23,64 +128,92 @@ export default function SignUp() {
               <p className="text-gray-500">Please enter your details to sign up</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" placeholder="Enter your first name" />
+              <form onSubmit={handleEmailSignUp}>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input 
+                      id="firstName"
+                      value={formData.firstName}
+                      onChange={handleInputChange}
+                      placeholder="Enter your first name"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input 
+                      id="lastName"
+                      value={formData.lastName}
+                      onChange={handleInputChange}
+                      placeholder="Enter your last name"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" placeholder="Enter your last name" />
+                
+                <div className="space-y-2 mt-4">
+                  <Label htmlFor="email">Email</Label>
+                  <Input 
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    placeholder="Enter your email"
+                    required
+                    disabled={isLoading}
+                  />
                 </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Input id="address" placeholder="Enter your specific address" />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="city">City</Label>
-                <Input id="city" placeholder="Enter your city" />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="state">State</Label>
-                  <Input id="state" placeholder="Example: NY" />
+                
+                <div className="space-y-2 mt-4">
+                  <Label htmlFor="password">Password</Label>
+                  <Input 
+                    id="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    placeholder="Enter your password"
+                    required
+                    disabled={isLoading}
+                    minLength={6}
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="postalCode">Postal Code</Label>
-                  <Input id="postalCode" placeholder="Example: 11101" />
+                
+                <Button 
+                  type="submit"
+                  className="w-full bg-teal-600 text-white py-3 mt-6 rounded-md hover:bg-teal-700 transition-colors"
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Signing up...' : 'Sign Up'}
+                </Button>
+
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-gray-300"></span>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                  </div>
                 </div>
-              </div>
+
+                <Button 
+                  type="button"
+                  onClick={handleGoogleSignUp}
+                  disabled={isLoading}
+                  className="w-full bg-white text-gray-700 border border-gray-300 py-3 rounded-md hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <img 
+                    src="/google.svg" 
+                    alt="Google" 
+                    className="w-5 h-5"
+                  />
+                  {isLoading ? 'Signing up...' : 'Sign up with Google'}
+                </Button>
+              </form>
               
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="dob">Date of Birth</Label>
-                  <Input id="dob" placeholder="YYYY-MM-DD" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ssn">SSN</Label>
-                  <Input id="ssn" placeholder="Example: 1234" type="password" />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="Enter your email" />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" placeholder="Enter your password" />
-              </div>
-              
-              <Button className="w-full bg-teal-600 text-white py-3 rounded-md hover:bg-teal-700 transition-colors">
-                Sign Up
-              </Button>
-              
-              <p className="text-center text-sm text-gray-600">
+              <p className="text-center text-sm text-gray-600 mt-6">
                 Already have an account?{' '}
                 <Link href="/signin" className="text-teal-600 hover:text-teal-700">
                   Sign in
@@ -93,9 +226,7 @@ export default function SignUp() {
         {/* Credit Card Display */}
         <div className="w-1/2 flex items-center justify-center">
           <div className="relative w-96">
-            {/* Main Card */}
             <div className="absolute w-full h-64 bg-blue-500 rounded-2xl transform rotate-6 shadow-xl"></div>
-            {/* Top Card */}
             <div className="relative w-full h-64 bg-blue-600 rounded-2xl shadow-2xl p-6 flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>

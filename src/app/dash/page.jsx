@@ -1,178 +1,188 @@
 'use client'
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { ArrowUpRight, Send, Plus, ChevronDown, Eye } from 'lucide-react';
+import { PieChart, Pie, ResponsiveContainer, Cell, Tooltip, Legend } from 'recharts';
+import { ChevronDown } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy 
+} from 'firebase/firestore';
 
-// Sample data
-const monthlyData = [
-  { name: 'Jan', income: 50000, expense: 32000 },
-  { name: 'Feb', income: 52000, expense: 35000 },
-  { name: 'Mar', income: 51000, expense: 33000 },
-  { name: 'Apr', income: 49000, expense: 31000 },
-  { name: 'May', income: 50000, expense: 32000 },
-  { name: 'Jun', income: 48000, expense: 30000 },
-  { name: 'Jul', income: 47000, expense: 29000 },
-  { name: 'Aug', income: 49000, expense: 31000 },
-  { name: 'Sep', income: 46000, expense: 28000 },
-  { name: 'Oct', income: 48000, expense: 33000 },
-  { name: 'Nov', income: 47000, expense: 30000 },
-  { name: 'Dec', income: 50000, expense: 32000 },
-];
+const firebaseConfig = {
+  apiKey: "AIzaSyDIjVP6gAqeV4mLabZPIm8E3FN5oDq2cUI",
+  authDomain: "pocketwise-7f278.firebaseapp.com",
+  projectId: "pocketwise-7f278",
+  storageBucket: "pocketwise-7f278.firebasestorage.app",
+  messagingSenderId: "707354446767",
+  appId: "1:707354446767:web:4cc5686f459439f2e27d5a",
+  measurementId: "G-DN504JWFH8"
+};
 
-const transactions = [
-  { name: 'Stripe', date: '15 Mar 2024', amount: 132.00, type: 'credit', icon: '💳' },
-  { name: 'Shopify', date: '15 Mar 2024', amount: -5.00, type: 'debit', icon: '🛍' },
-  { name: 'Paypal', date: '16 Mar 2024', amount: 148.00, type: 'credit', icon: '💰' },
-  { name: 'Youtube', date: '16 Mar 2024', amount: -10.99, type: 'debit', icon: '📺' },
-  { name: 'Notion', date: '17 Mar 2024', amount: -15.00, type: 'debit', icon: '📝' },
-  { name: 'Figma', date: '18 Mar 2024', amount: -45.00, type: 'debit', icon: '🎨' },
-];
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-const pieData = [
-  { name: 'Salary', value: 91000, color: '#1e40af' },
-  { name: 'Freelance', value: 29400, color: '#fbbf24' },
-  { name: 'Bonus', value: 19600, color: '#3b82f6' },
-];
+const ExpenseTracker = ({ isDarkMode }) => {
+  const [expenses, setExpenses] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(
+    new Date().toLocaleString('default', { month: 'long', year: 'numeric' })
+  );
+  
+  const categoryColors = {
+    food: '#FF6B6B',
+    transport: '#4ECDC4',
+    entertainment: '#45B7D1',
+    shopping: '#96CEB4',
+    utilities: '#FFEEAD',
+    other: '#D4A5A5'
+  };
 
-const Dashboard = () => {
+  // Add expense to Firebase
+  const addExpense = async (expenseData) => {
+    try {
+      const docRef = await addDoc(collection(db, 'expenses'), {
+        ...expenseData,
+        timestamp: new Date(),
+        userId: 'user123' // Replace with actual user ID from auth
+      });
+      console.log('Expense added with ID: ', docRef.id);
+      fetchExpenses(); // Refresh the list
+    } catch (error) {
+      console.error('Error adding expense: ', error);
+    }
+  };
+
+  // Fetch expenses from Firebase
+  const fetchExpenses = async () => {
+    try {
+      const [month, year] = selectedMonth.split(' ');
+      const startDate = new Date(`${month} 1, ${year}`);
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + 1);
+
+      const q = query(
+        collection(db, 'expenses'),
+        where('userId', '==', 'user123'),
+        where('timestamp', '>=', startDate),
+        where('timestamp', '<', endDate),
+        orderBy('timestamp', 'desc')
+      );
+
+      const querySnapshot = await getDocs(q);
+      const expensesList = [];
+      querySnapshot.forEach((doc) => {
+        expensesList.push({ id: doc.id, ...doc.data() });
+      });
+      setExpenses(expensesList);
+    } catch (error) {
+      console.error('Error fetching expenses: ', error);
+    }
+  };
+
+  // Calculate data for pie chart
+  const calculatePieChartData = () => {
+    const categoryTotals = {};
+    expenses.forEach((expense) => {
+      categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + expense.amount;
+    });
+
+    return Object.entries(categoryTotals).map(([name, value]) => ({
+      name,
+      value,
+      color: categoryColors[name.toLowerCase()] || categoryColors.other
+    }));
+  };
+
+  useEffect(() => {
+    fetchExpenses();
+  }, [selectedMonth]);
+
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Cashflow Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Cashflow</CardTitle>
-            <div className="flex items-center text-sm text-gray-500">
-              This year <ChevronDown className="ml-1 h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div>
-                <p className="text-sm text-gray-500">Total Balance</p>
-                <div className="flex items-center">
-                  <h2 className="text-3xl font-bold">$48,029.00</h2>
-                  <span className="ml-2 text-green-500 text-sm">↑ 5%</span>
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={monthlyData}>
-                  <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                  <Line type="monotone" dataKey="income" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="expense" stroke="#fbbf24" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Virtual Card */}
-        <Card className="bg-blue-700 text-white">
-          <CardContent className="pt-6">
-            <div className="space-y-8">
-              <div className="flex justify-between">
-                <p>Virtual card</p>
-                <div className="h-8 w-12 rounded-md bg-white/20" />
-              </div>
-              <div>
-                <p className="text-sm opacity-75">Total Balance</p>
-                <div className="flex items-center">
-                  <h2 className="text-2xl font-bold">$48,029.00</h2>
-                  <Eye className="ml-2 h-4 w-4 opacity-75" />
-                </div>
-              </div>
-              <div className="flex justify-between items-end">
-                <p className="text-lg">2148 3214 9812 2687</p>
-                <img src="/api/placeholder/48/32" alt="VISA" className="opacity-75" />
-              </div>
-              <div className="flex gap-4">
-                <button className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-lg">
-                  <Plus className="h-4 w-4" /> Request
-                </button>
-                <button className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-lg">
-                  <Send className="h-4 w-4" /> Send
-                </button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Statistics and Recent Transactions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Statistics</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-between mb-4">
-              <div>
-                <span className="text-sm text-gray-500">Income</span>
-                <p className="font-bold">$140,000</p>
-              </div>
-              <div>
-                <span className="text-sm text-gray-500">Expense</span>
-                <p className="font-bold">$63,564</p>
-              </div>
-            </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  innerRadius={60}
-                  outerRadius={80}
-                  dataKey="value"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Recent Transactions</CardTitle>
-            <button className="text-sm text-blue-600">Show all</button>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((transaction) => (
-                  <TableRow key={transaction.name + transaction.date}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <span>{transaction.icon}</span>
-                        {transaction.name}
-                      </div>
-                    </TableCell>
-                    <TableCell>{transaction.date}</TableCell>
-                    <TableCell className={`text-right ${
-                      transaction.type === 'credit' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {transaction.type === 'credit' ? '+' : '-'} ${Math.abs(transaction.amount).toFixed(2)}
-                    </TableCell>
-                  </TableRow>
+    <div className="grid gap-4">
+      <Card className="dark:bg-gray-800">
+        <CardHeader>
+          <CardTitle className="dark:text-white">
+            Expense Breakdown - {selectedMonth}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={calculatePieChartData()}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={80}
+                dataKey="value"
+                label={({ name, value }) => `${name}: $${value}`}
+              >
+                {calculatePieChartData().map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: isDarkMode ? '#374151' : '#ffffff',
+                  borderColor: isDarkMode ? '#4B5563' : '#E5E7EB',
+                  color: isDarkMode ? '#ffffff' : '#000000'
+                }}
+              />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="dark:bg-gray-800">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="dark:text-white">Expenses - {selectedMonth}</CardTitle>
+          <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
+            Show all
+          </button>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            {expenses.map((expense) => (
+              <div key={expense.id} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{
+                      backgroundColor: `${categoryColors[expense.category.toLowerCase()]}25`
+                    }}
+                  >
+                    <span style={{ color: categoryColors[expense.category.toLowerCase()] }}>
+                      {expense.category[0].toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-medium dark:text-white">{expense.description}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {expense.category}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium dark:text-white">
+                    -${expense.amount.toFixed(2)}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {new Date(expense.timestamp.seconds * 1000).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
 
-export default Dashboard;
+export default ExpenseTracker;

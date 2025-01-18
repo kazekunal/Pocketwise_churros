@@ -1,7 +1,13 @@
 'use client'
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { setDoc, doc, getDoc } from "firebase/firestore";
+import { toast } from "react-toastify";
+import { useRouter } from 'next/navigation';
+import { auth, db } from '../../components/firebase';
 
 const QuizForm = () => {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: "",
     age: "",
@@ -11,6 +17,49 @@ const QuizForm = () => {
     moviegenre: "",
     hobby: "",
   });
+
+  // Check authentication and existing survey
+  useEffect(() => {
+    const checkAuthAndSurvey = async () => {
+      try {
+        const user = auth.currentUser;
+        
+        if (!user) {
+          toast.error("Please sign in first");
+          router.push('/signin');
+          return;
+        }
+
+        // Check if survey exists for this user
+        const surveyDoc = await getDoc(doc(db, "survey", user.uid));
+        
+        if (surveyDoc.exists()) {
+          toast.info("You have already completed the survey");
+          router.push('/track');
+          return;
+        }
+        
+        setLoading(false);
+      } catch (error) {
+        console.error("Error checking survey:", error);
+        toast.error("An error occurred while checking your survey status");
+        setLoading(false);
+      }
+    };
+
+    // Add an auth state listener to handle cases where auth state changes
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        checkAuthAndSurvey();
+      } else {
+        toast.error("Please sign in first");
+        router.push('/signin');
+      }
+    });
+
+    // Cleanup subscription
+    return () => unsubscribe();
+  }, [router]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -22,34 +71,65 @@ const QuizForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
     try {
-      const response = await fetch("http://localhost:3000/submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
+      const user = auth.currentUser;
+      
+      if (!user) {
+        toast.error("Please sign in to submit the survey");
+        router.push('/signin');
+        return;
+      }
+
+      // Check again if survey exists before submitting
+      const surveyDoc = await getDoc(doc(db, "survey", user.uid));
+      
+      if (surveyDoc.exists()) {
+        toast.info("You have already completed the survey");
+        router.push('/track');
+        return;
+      }
+
+      // Add timestamp and userId to the survey data
+      const surveyData = {
+        ...formData,
+        userId: user.uid,
+        userEmail: user.email,
+        submittedAt: new Date().toISOString()
+      };
+
+      // Save to Firestore
+      await setDoc(doc(db, "survey", user.uid), surveyData);
+
+      toast.success("Survey submitted successfully!");
+      
+      // Clear form
+      setFormData({
+        name: "",
+        age: "",
+        location: "",
+        cuisine: "",
+        musicgenre: "",
+        moviegenre: "",
+        hobby: "",
       });
 
-      if (response.ok) {
-        alert("Your preferences have been saved!");
-        setFormData({
-          name: "",
-          age: "",
-          location: "",
-          cuisine: "",
-          musicgenre: "",
-          moviegenre: "",
-          hobby: "",
-        });
-      } else {
-        alert("Failed to save your preferences. Please try again.");
-      }
+      // Redirect to dashboard
+      router.push('/track');
+
     } catch (error) {
-      console.error("Error:", error);
-      alert("An error occurred. Please try again.");
+      console.error("Error saving survey:", error);
+      toast.error("Failed to submit survey. Please try again.");
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-200 to-cyan-200">
+        <div className="text-xl font-semibold text-gray-700">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-200 to-cyan-200 py-12 px-4 sm:px-6 lg:px-8">
@@ -60,6 +140,7 @@ const QuizForm = () => {
         <p className="text-center italic mb-6">Let us get to know you better.</p>
         
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Form fields remain the same... */}
           <div>
             <label htmlFor="name" className="block font-bold mb-2">
               What is your name?
@@ -133,7 +214,7 @@ const QuizForm = () => {
 
           <div>
             <label htmlFor="musicgenre" className="block font-bold mb-2">
-              Who is your favorite music genre?
+              What is your favorite music genre?
             </label>
             <input
               type="text"
@@ -149,7 +230,7 @@ const QuizForm = () => {
 
           <div>
             <label htmlFor="moviegenre" className="block font-bold mb-2">
-              Who is your favorite movie genre?
+              What is your favorite movie genre?
             </label>
             <input
               type="text"
