@@ -14,12 +14,12 @@ const { HumanMessage, SystemMessage } = require("@langchain/core/messages");
 const bodyParser = require('body-parser');
 const { spawn } = require('child_process');
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceaccounKey.json'); // Add the path to your service account file here
+const serviceAccount = require('./service-account-Key.json'); // Add the path to your service account file here
 
 // Initialize Firebase Admin SDK with explicit credentials
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: 'https://pocketwise-7f278-default-rtdb.asia-southeast1.firebasedatabase.app' // Replace with your Firestore URL
+  databaseURL: 'https://database-url.firebasedatabase.app' // Replace with your Firestore URL
 });
 
 
