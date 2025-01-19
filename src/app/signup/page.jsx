@@ -10,6 +10,8 @@ import { GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword } f
 import { auth, db } from "../../components/firebase";
 import { setDoc, doc, getDoc } from "firebase/firestore";
 import { toast } from "react-toastify";
+import Image from 'next/image';
+import img from '../../../public/download.jpeg'
 
 export default function SignUp() {
   const router = useRouter();
@@ -122,7 +124,7 @@ export default function SignUp() {
           <Card className="w-full">
             <CardHeader>
               <div className="mb-4">
-                <div className="text-2xl font-bold text-slate-900">moneyflow</div>
+                <div className="text-2xl font-bold text-slate-900">PocketWise</div>
               </div>
               <CardTitle className="text-2xl font-semibold">Sign Up</CardTitle>
               <p className="text-gray-500">Please enter your details to sign up</p>
@@ -230,16 +232,16 @@ export default function SignUp() {
             <div className="relative w-full h-64 bg-blue-600 rounded-2xl shadow-2xl p-6 flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-white text-xl font-semibold">Adrian | JSM</p>
-                  <p className="text-white text-2xl font-bold mt-1">$110.00</p>
+                  <p className="text-white text-xl font-semibold">Credit Card</p>
+                  <p className="text-white text-2xl font-bold mt-1">HDFC BANK</p>
                 </div>
                 <div className="text-white text-2xl">))</div>
               </div>
               <div className="space-y-2">
-                <p className="text-white opacity-80 text-lg">•••• •••• •••• 0000</p>
+                <p className="text-white opacity-80 text-lg">•••• •••• •••• 0369</p>
                 <div className="flex justify-between items-center">
-                  <p className="text-white opacity-80">Adrian | JSM</p>
-                  <img src="/mastercard-logo.png" alt="Mastercard" className="h-8 w-12 object-contain"/>
+                  <p className="text-white opacity-80">Kunal Passan </p>
+                  <img src="/download.jpeg" alt="Mastercard" className="h-8 w-12 object-contain"/>
                 </div>
               </div>
             </div>

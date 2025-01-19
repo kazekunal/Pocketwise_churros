@@ -131,7 +131,7 @@ export default function SignIn() {
     <div className="min-h-screen bg-gradient-to-br from-pink-200 to-cyan-200 flex items-center justify-center">
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="text-2xl font-bold text-slate-900 mb-4">moneyflow</div>
+          <div className="text-2xl font-bold text-slate-900 mb-4">PocketWise</div>
           <h2 className="text-2xl font-bold text-slate-900">Welcome back</h2>
           <p className="text-slate-600 mt-2">Please enter your details to sign in</p>
         </div>

@@ -2,16 +2,34 @@ const express = require('express');
 const cors = require('cors');
 const { ChatGroq } = require('@langchain/groq');
 const { ChatPromptTemplate } = require('@langchain/core/prompts');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
 require('dotenv').config();
 const { getJson } = require("serpapi");
 const app = express();
 const port = 3000;
 const { HumanMessage, SystemMessage } = require("@langchain/core/messages");
 const bodyParser = require('body-parser');
+const { spawn } = require('child_process');
+const admin = require('firebase-admin');
+const serviceAccount = require('./serviceaccounKey.json'); // Add the path to your service account file here
+
+// Initialize Firebase Admin SDK with explicit credentials
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: 'https://pocketwise-7f278-default-rtdb.asia-southeast1.firebasedatabase.app' // Replace with your Firestore URL
+});
+
+
+// Firestore reference
+const db = admin.firestore();
+
 // Enable CORS
 app.use(cors());
 app.use(express.json());
-
+app.use(bodyParser.json());
 // Placeholder for the chatbot model
 const model = new ChatGroq({
     apiKey: process.env.GROQ_API_KEY,
@@ -20,7 +38,7 @@ const model = new ChatGroq({
 });
 
 let conversationHistory = [
-    ["system", "You are a financial advisor and a chatbot in a budgeting app for gen-z.Make sure to give sound financial advice and keep your answers precise and to the point.Answer the given questions and nothing else"]
+    ["system", "You are a financial advisor and a chatbot in a budgeting app for gen-z. Make sure to give sound financial advice and keep your answers precise and to the point. Answer the given questions and nothing else"]
 ];
 
 // Default route for root URL
@@ -118,6 +136,122 @@ app.post('/events', async (req, res) => {
     }
 });
 
+// Firestore listener for new documents and modified documents
+// Initialize Firebase Admin SDK
+
+// Firestore listener for new documents and modified documents
+db.collection('users').onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+        if (change.type === 'added' || change.type === 'modified') {
+            // Process the new or modified document
+            const documentId = change.doc.id;  // Get document ID
+            const newData = change.doc.data();  // Get document data
+            console.log(`Document ${change.type}: `, newData);
+
+            // Trigger retraining process (you can call a function here to retrain your model)
+            retrainModelAndStorePrediction(newData, documentId);
+        }
+    });
+});
+
+// Function to handle retraining, plotting, and storing prediction results
+function retrainModelAndStorePrediction(data, documentId) {
+    // Send data to Python script for model prediction
+    const pythonProcess = spawn('python', ['./script.py', JSON.stringify(data)]);
+
+    pythonProcess.stdout.on('data', (data) => {
+        console.log(`stdout: ${data}`);
+        
+        // Parse the predictions from the Python script output
+        try {
+            const predictions = JSON.parse(data.toString()); // Parse the predictions
+            console.log("Predictions received: ", predictions);
+
+            // Store the predictions in Firestore under the document
+            db.collection('users').doc(documentId).update({
+                predictions: predictions  // Store the full list of predictions
+            })
+            .then(() => {
+                console.log("Predictions stored successfully in Firestore.");
+            })
+            .catch((error) => {
+                console.error("Error storing predictions in Firestore: ", error);
+            });
+        } catch (error) { 
+            console.error("Failed to parse predictions:", error);
+        }
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        console.log(`stderr: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        console.log(`child process exited with code ${code}`);
+    });
+}
+
+// Set up Multer for file uploads
+const upload = multer({
+    dest: 'uploads/', // Temporary directory to store uploaded files
+    limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
+    fileFilter: (req, file, cb) => {
+        const fileTypes = /jpeg|jpg|png/;
+        const extName = fileTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimeType = fileTypes.test(file.mimetype);
+        if (extName && mimeType) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Only .jpeg, .jpg, and .png files are allowed!'));
+        }
+    }
+});
+
+// POST route to handle image uploads and OCR processing
+app.post('/process-image', upload.single('image'), (req, res) => {
+    // Ensure the file was uploaded
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded or invalid file type.' });
+    }
+
+    const imagePath = req.file.path;
+
+    // Spawn Python process with the image path
+    const pythonProcess = spawn('python', ['./script_img.py', JSON.stringify({ image_path: imagePath })]);
+
+    let outputData = '';
+    let errorData = '';
+
+    // Collect stdout data from the Python process
+    pythonProcess.stdout.on('data', (data) => {
+        outputData += data.toString();
+    });
+
+    // Collect stderr data from the Python process
+    pythonProcess.stderr.on('data', (data) => {
+        errorData += data.toString();
+    });
+
+    // Handle process close
+    pythonProcess.on('close', (code) => {
+        // Remove the uploaded file after processing
+        fs.unlink(imagePath, (err) => {
+            if (err) console.error('Failed to delete temporary file:', err);
+        });
+
+        if (code === 0) {
+            try {
+                // Parse Python script output and send response
+                const result = JSON.parse(outputData);
+                res.json({ success: true, result });
+            } catch (parseError) {
+                res.status(500).json({ success: false, error: 'Failed to parse Python output.', details: parseError.message });
+            }
+        } else {
+            res.status(500).json({ success: false, error: 'Python script error.', details: errorData });
+        }
+    });
+});
 
 
 

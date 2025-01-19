@@ -39,13 +39,8 @@ export default function LandingPage() {
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
       }`}>
         <div className="flex items-center">
-          <div className="text-2xl font-bold text-slate-900">moneyflow</div>
-          <div className="hidden md:flex space-x-8 ml-12">
-            <button className="text-slate-600 hover:text-slate-900 transition-colors">Products</button>
-            <button className="text-slate-600 hover:text-slate-900 transition-colors">Customers</button>
-            <button className="text-slate-600 hover:text-slate-900 transition-colors">Pricing</button>
-            <button className="text-slate-600 hover:text-slate-900 transition-colors">Learn</button>
-          </div>
+          <div className="text-3xl font-bold text-slate-900">PocketWise</div>
+         
         </div>
         <div className="hidden md:flex space-x-4">
           <button 
@@ -96,7 +91,7 @@ export default function LandingPage() {
       )}
 
       {/* Hero Section */}
-      <div className="container mx-auto px-4 sm:px-6 lg:px-24 py-20 lg:py-44">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-24 py-20 lg:py-52">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
           <div>
             <h1 className={`text-4xl lg:text-6xl font-bold text-slate-900 leading-tight mb-6 transition-all duration-1000 ease-out ${
@@ -107,7 +102,8 @@ export default function LandingPage() {
             <p className={`text-lg text-slate-600 mb-8 transition-all duration-1000 delay-300 ease-out ${
               isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'
             }`}>
-              Smart financial tools for students with simple expense tracking, automated savings, and powerful spending insights.
+              
+              Get access to tools that simplify budgeting with real-time tracking, AI-driven forecasts, and gamified insights, blending financial control with lifestyle convenience.
             </p>
             <div className={`flex flex-col sm:flex-row items-stretch sm:items-center space-y-4 sm:space-y-0 sm:space-x-4 transition-all duration-1000 delay-500 ease-out ${
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'

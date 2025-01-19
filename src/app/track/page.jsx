@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import Chatbot from '@/components/chatbot';
-
 import Fetchevents from '../../components/FetchEvents'
 import { db, auth } from '../../components/firebase';
+import { serverTimestamp } from "firebase/firestore";
+import PredictionGraph from '@/components/PredictionGraph';
+import ImageUploader from '@/components/ImageUploader';
 import { 
   collection, 
   doc, 
@@ -23,7 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
-import { CreditCard, ChevronDown, Eye, Plus, Send, DollarSign, TrendingUp, PieChartIcon, Sun, Moon, Target, Plane, GraduationCap, Heart, Edit2, Trash2 } from 'lucide-react';
+import { CreditCard,Pencil,Check,X, ChevronDown, Eye, Plus, Send, DollarSign, TrendingUp, PieChartIcon, Sun, Moon, Target, Plane, GraduationCap, Heart, Edit2, Trash2 } from 'lucide-react';
 
 const categoryColors = {
   groceries: '#4CAF50',
@@ -38,10 +40,9 @@ const categoryColors = {
   other: '#607D8B'
 };
 
-const Dashboard = () => {
+const Dashboard = ({ userId }) => {
   const [selectedMonth, setSelectedMonth] = useState('Jan');
   const [monthlyData, setMonthlyData] = useState([]);
-  const [budget, setBudget] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAddingGoal, setIsAddingGoal] = useState(false);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
@@ -49,6 +50,10 @@ const Dashboard = () => {
   const [goals, setGoals] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [monthlyExpenses, setMonthlyExpenses] = useState({});
+  const [budget, setBudget] = useState(0);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('0');
+  const [isLoading, setIsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [newExpense, setNewExpense] = useState({
@@ -81,6 +86,67 @@ const Dashboard = () => {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const fetchBudget = async () => {
+      if (!userId) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const docRef = doc(db, 'users', userId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const budgetValue = typeof data.budget === 'number' ? data.budget : 0;
+          setBudget(budgetValue);
+          setEditValue(budgetValue.toString());
+        } else {
+          // Initialize the document if it doesn't exist
+          const initialBudget = 0;
+          setBudget(initialBudget);
+          setEditValue(initialBudget.toString());
+        }
+      } catch (error) {
+        console.error('Error fetching budget:', error);
+        // Set default values on error
+        setBudget(0);
+        setEditValue('0');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchBudget();
+  }, [userId]);
+
+  const handleEdit = () => {
+    setIsEditing(true);
+    setEditValue(budget.toString());
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditValue(budget.toString());
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      handleCancel();
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    // Only allow numbers and decimals
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setEditValue(value);
+    }
+  };
 
   const fetchUserData = async (userId) => {
     try {
@@ -201,11 +267,26 @@ const Dashboard = () => {
     sortOrder: 'desc',
     searchTerm: ''
   });
-  const handleAddExpense = async () => {
-    if (!currentUser || !newExpense.description || !newExpense.amount) return;
+  const handleAddExpense = async (expenseDetails = {}) => {
+    // Ensure expenseDetails from image is properly parsed and handled
+    const expenseToAdd = {
+      description: expenseDetails.description || newExpense.description || '',
+      amount: parseFloat(expenseDetails.amount) || parseFloat(newExpense.amount) || 0,  // Ensure amount is parsed as a number
+      category: newExpense.category || expenseDetails.category || 'other',  // Default to 'other' if no category is provided
+      isRecurrent: newExpense.isRecurrent || expenseDetails.isRecurrent || false,
+      recurrenceInterval: newExpense.recurrenceInterval || expenseDetails.recurrenceInterval || null,
+      tags: newExpense.tags || expenseDetails.tags || [],
+      notes: newExpense.notes || expenseDetails.notes || '',
+    };
+  
+    // Check if necessary fields are provided
+    if (!currentUser || !expenseToAdd.description || isNaN(expenseToAdd.amount)) {
+      console.error("Invalid data. Please check the expense details.");
+      return;
+    }
   
     try {
-      // Reference to the expenses collection for the current user and month
+      // Reference to the expenses collection for the current user and selected month
       const expenseRef = collection(db, 'users', currentUser.uid, 'expenses');
       const monthDocRef = doc(expenseRef, selectedMonth);
   
@@ -216,21 +297,22 @@ const Dashboard = () => {
       if (monthDoc.exists()) {
         currentExpenses = monthDoc.data().expenses || [];
       }
-      
-      // Create new expense object
+  
+      // Create new expense object with parsed data
       const expenseData = {
         id: Date.now(),
-        ...newExpense,
-        amount: parseFloat(newExpense.amount),
+        description: expenseToAdd.description,
+        amount: expenseToAdd.amount,
+        category: expenseToAdd.category,
         date: new Date().toISOString().split('T')[0],
         timestamp: new Date().getTime(),
-        isRecurrent: newExpense.isRecurrent || false,
-        recurrenceInterval: newExpense.recurrenceInterval || null,
-        tags: newExpense.tags || [],
-        notes: newExpense.notes || ''
+        isRecurrent: expenseToAdd.isRecurrent,
+        recurrenceInterval: expenseToAdd.recurrenceInterval,
+        tags: expenseToAdd.tags,
+        notes: expenseToAdd.notes
       };
   
-      // Add new expense to the array
+      // Add new expense to the current month's expenses
       const updatedExpenses = [...currentExpenses, expenseData];
   
       // Handle recurring expenses if applicable
@@ -244,7 +326,7 @@ const Dashboard = () => {
         });
       }
   
-      // Update the expenses in Firebase
+      // Update the expenses in Firebase for the current month
       await setDoc(monthDocRef, {
         expenses: updatedExpenses
       }, { merge: true });
@@ -404,6 +486,56 @@ const Dashboard = () => {
     }
   };
 
+  const handleSave = async () => {
+
+    console.log('userId:', currentUser.uid);
+    // Add defensive checks
+    if (!currentUser.uid || !db) {
+      console.error('Missing required dependencies:', {uid, db: !!db });
+      return;
+    }
+  
+    try {
+      const newBudget = parseFloat(editValue);
+      if (isNaN(newBudget)) {
+        console.error('Invalid budget value');
+        setEditValue(budget);
+        return;
+      }
+  
+      // Create document reference with explicit path segments
+      const usersCollection = 'users';  // Collection name
+      const userDocRef = doc(db, usersCollection, currentUser.uid);
+  
+      // Get document snapshot
+      const docSnap = await getDoc(userDocRef);
+  
+      const updateData = {
+        budget: newBudget,
+        updatedAt: serverTimestamp()
+      };
+  
+      if (!docSnap.exists()) {
+        // Create new document with setDoc
+        await setDoc(userDocRef, {
+          ...updateData,
+          createdAt: serverTimestamp()
+        });
+      } else {
+        // Update existing document
+        await updateDoc(userDocRef, updateData);
+      }
+  
+      // Update local state
+      setBudget(newBudget);
+      setIsEditing(false);
+  
+    } catch (error) {
+      console.error('Error updating budget:', error);
+      setEditValue(budget);
+      setIsEditing(false);
+    }
+  };
   const getFilteredExpenses = () => {
     let filtered = [...(monthlyExpenses[selectedMonth] || [])];
 
@@ -459,6 +591,21 @@ const Dashboard = () => {
     return progressPercentage;
   };
 
+  if (isLoading) {
+    return (
+      <Card className="dark:bg-gray-800">
+        <CardContent className="p-6">
+          <div className="animate-pulse flex space-x-4">
+            <div className="flex-1 space-y-4 py-1">
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+              <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -475,8 +622,8 @@ const Dashboard = () => {
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <div>
         <div className="flex justify-between items-center">
-          <Fetchevents/>
           <button 
             onClick={toggleTheme}
             className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -488,69 +635,125 @@ const Dashboard = () => {
             )}
           </button>
           {currentUser && (
-            <Dialog open={isAddingExpense} onOpenChange={setIsAddingExpense}>
-              <DialogTrigger asChild>
-                <Button >Add Expense</Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px] dark:bg-gray-800">
-                <DialogHeader>
-                  <DialogTitle className="dark:text-white">Add New Expense</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <label className="text-sm dark:text-white">Description</label>
-                    <Input
-                      value={newExpense.description}
-                      onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                      className="dark:bg-gray-700 dark:text-white"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-sm dark:text-white">Amount ($)</label>
-                    <Input
-                      type="number"
-                      value={newExpense.amount}
-                      onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
-                      className="dark:bg-gray-700 dark:text-white"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-sm dark:text-white">Category</label>
-                    <select
-                      value={newExpense.category}
-                      onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
-                      className="w-full p-2 rounded-md dark:bg-gray-700 dark:text-white"
-                    >
-                      {Object.keys(categoryColors).map((category) => (
-                        <option key={category} value={category}>
-                          {category.charAt(0).toUpperCase() + category.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <Button onClick={handleAddExpense} className="dark:bg-blue-600 dark:text-white">
-                    Add Expense
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
+  <Dialog open={isAddingExpense} onOpenChange={setIsAddingExpense}>
+    <DialogTrigger asChild>
+      <Button className="bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-black">
+        Add Expense
+      </Button>
+    </DialogTrigger>
+    <DialogContent className="sm:max-w-[425px] bg-black border border-gray-700 rounded-lg shadow-lg">
+      <DialogHeader>
+        <DialogTitle className="text-white text-lg font-semibold">Add New Expense</DialogTitle>
+      </DialogHeader>
+      <div className="grid gap-4 py-4 px-4">
+        <div className="grid gap-2">
+          <label className="text-sm text-gray-300">Description</label>
+          <Input
+            value={newExpense.description}
+            onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+            className="bg-gray-800 text-white border border-gray-600 rounded-md p-2 focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <div className="grid gap-2">
+          <label className="text-sm text-gray-300">Amount ($)</label>
+          <Input
+            type="number"
+            value={newExpense.amount}
+            onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
+            className="bg-gray-800 text-white border border-gray-600 rounded-md p-2 focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <div className="grid gap-2">
+          <label className="text-sm text-gray-300">Category</label>
+          <select
+            value={newExpense.category}
+            onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
+            className="w-full p-2 rounded-md bg-gray-800 text-white border border-gray-600 focus:ring-2 focus:ring-green-500"
+          >
+            {Object.keys(categoryColors).map((category) => (
+              <option key={category} value={category}>
+                {category.charAt(0).toUpperCase() + category.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="flex justify-between items-center">
+        <Button
+          onClick={handleAddExpense}
+          className="bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+        >
+          Add Expense
+        </Button>
+      </div>
+      <ImageUploader handleAddExpense={handleAddExpense} />
+    </DialogContent>
+  </Dialog>
+)}
+
+        </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="dark:bg-gray-800">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 dark:text-white">
-                <DollarSign className="w-5 h-5" />
-                Budget
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold dark:text-white">${budget.toFixed(2)}</div>
-            </CardContent>
-          </Card>
-
+        <Card className="dark:bg-gray-800">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between dark:text-white">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5" />
+            Budget
+          </div>
+          {!isEditing && (
+            <button
+              onClick={handleEdit}
+              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+              aria-label="Edit budget"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+              ₹
+              </span>
+              <input
+                type="text"
+                value={editValue}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                className="w-full pl-8 pr-4 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400"
+                placeholder="Enter budget..."
+                autoFocus
+              />
+            </div>
+            <button
+              onClick={() => {
+                console.log('Button clicked');
+                handleSave();
+              }}
+              className="p-2 text-white bg-emerald-500 hover:bg-emerald-600 rounded-md transition-colors"
+              aria-label="Save budget"
+            >
+              <Check className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleCancel}
+              className="p-2 text-white bg-gray-500 hover:bg-gray-600 rounded-md transition-colors"
+              aria-label="Cancel editing"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="text-2xl font-bold dark:text-white">
+            ₹{(budget || 0).toFixed(2)}
+          </div>
+        )}
+      </CardContent>
+    </Card>
           <Card className="dark:bg-gray-800">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 dark:text-white">
@@ -560,7 +763,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-500">
-                ${totalExpenses.toFixed(2)}
+                ₹{totalExpenses.toFixed(2)}
               </div>
             </CardContent>
           </Card>
@@ -574,7 +777,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${remaining < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                ${remaining.toFixed(2)}
+                ₹ {remaining.toFixed(2)}
               </div>
             </CardContent>
           </Card>
@@ -630,7 +833,7 @@ const Dashboard = () => {
                     innerRadius={60}
                     outerRadius={80}
                     dataKey="value"
-                    label={({ name, value }) => `${name}: $${value}`}
+                    label={({ name, value }) => `${name}: ₹${value}`}
                   >
                     {pieChartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -649,7 +852,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </div>
-
+        <PredictionGraph/>
         <Card className="dark:bg-gray-800">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="dark:text-white">Expenses - {selectedMonth}</CardTitle>
@@ -731,17 +934,10 @@ const Dashboard = () => {
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <p className="font-medium dark:text-white">-${expense.amount.toFixed(2)}</p>
+                    <p className="font-medium dark:text-white">-₹{expense.amount.toFixed(2)}</p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">{expense.date}</p>
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setEditingExpense(expense)}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
                     <Button
                       variant="outline"
                       size="icon"
@@ -756,6 +952,16 @@ const Dashboard = () => {
           </div>
         </CardContent>
       </Card>
+      <div className="w-full p-4 ">
+        <iframe 
+          src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3505.432079922997!2d77.57278807580788!3d28.52672977572278!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390ceb4eaaaaaaab%3A0x321412756718874c!2sShiv%20Nadar%20Institution%20of%20Eminence%20Deemed%20to%20be%20University!5e0!3m2!1sen!2sin!4v1737226722378!5m2!1sen!2sin" 
+          className="w-full max-w-3xl h-[450px] rounded-lg border border-gray-800 shadow-lg bg-gray-900 filter contrast-75 opacity-90 mx-auto"
+          loading="lazy" 
+          allowFullScreen
+          referrerPolicy="no-referrer-when-downgrade"
+        ></iframe>
+      </div>
+      <Fetchevents/>
       <Chatbot/>
       </div>
     </div>
